@@ -68,97 +68,12 @@ success_response <- function(response, data) {
     ), auto_unbox = TRUE))
 }
 
-# Helper function to detect and set gene symbols as rownames
-detect_and_set_gene_symbols <- function(spe) {
-    # Common gene symbol column names in priority order
-    gene_symbol_columns <- c(
-        "symbol", "Symbol", "SYMBOL",
-        "gene_name", "gene_symbol", "gene.name", "Gene.name",
-        "feature_name", "feature", "gene",
-        "hgnc_symbol", "mgi_symbol"
-    )
-    
-    # Check if rowData exists and has columns
-    if (!is.null(rowData(spe)) && ncol(rowData(spe)) > 0) {
-        available_cols <- colnames(rowData(spe))
-        
-        # First, look for a gene symbol column
-        for (col in gene_symbol_columns) {
-            if (col %in% available_cols) {
-                gene_symbols <- rowData(spe)[[col]]
-                if (!is.null(gene_symbols) && !all(is.na(gene_symbols))) {
-                    cat(sprintf("Found gene symbols in column '%s'\n", col))
-                    
-                    # Only set as rownames if unique
-                    if (length(unique(gene_symbols)) == length(gene_symbols)) {
-                        rownames(spe) <- gene_symbols
-                        cat(sprintf("Set gene symbols from column '%s' as rownames\n", col))
-                        break
-                    } else {
-                        cat(sprintf("Column '%s' contains duplicates, checking for unique ID columns\n", col))
-                    }
-                }
-            }
-        }
-        
-        # If no gene symbols set as rownames, try gene_id or ensembl_id
-        current_rownames <- rownames(spe)
-        if (is.null(current_rownames) || all(current_rownames == as.character(seq_len(nrow(spe))))) {
-            if ("gene_id" %in% available_cols || "ensembl_id" %in% available_cols) {
-                id_col <- if("gene_id" %in% available_cols) "gene_id" else "ensembl_id"
-                gene_ids <- rowData(spe)[[id_col]]
-                if (!is.null(gene_ids) && !all(is.na(gene_ids)) && 
-                    length(unique(gene_ids)) == length(gene_ids)) {
-                    rownames(spe) <- gene_ids
-                    cat(sprintf("Set gene IDs from column '%s' as rownames\n", id_col))
-                }
-            }
-        }
-    }
-    
-    return(spe)
-}
-
 #######################################################
 ### Inner Analysis Functions ##########################
 #######################################################
 
 # Inner function for calculate-qc-metrics
-_inner_calculate_qc_metrics <- function(spe, mito_string = NULL, species = "auto") {
-  # Determine mito pattern if not provided
-  if (is.null(mito_string)) {
-    if (species == "human") {
-      mito_string <- "^MT-"
-    } else if (species == "mouse") {
-      mito_string <- "^Mt-"
-    } else if (species == "auto") {
-      # Auto-detect based on gene names in rownames
-      gene_names <- rownames(spe)
-      if (!is.null(gene_names) && length(gene_names) > 0) {
-        has_human_mito <- any(grepl("^MT-", gene_names))
-        has_mouse_mito <- any(grepl("^Mt-", gene_names))
-        
-        if (has_human_mito && !has_mouse_mito) {
-          mito_string <- "^MT-"
-          cat("Auto-detected human mitochondrial genes (^MT-)\n")
-        } else if (has_mouse_mito && !has_human_mito) {
-          mito_string <- "^Mt-"
-          cat("Auto-detected mouse mitochondrial genes (^Mt-)\n")
-        } else if (has_human_mito && has_mouse_mito) {
-          mito_string <- "^MT-"
-          cat("Both human and mouse patterns found, defaulting to human (^MT-)\n")
-        } else {
-          mito_string <- "^MT-"
-          cat("No mitochondrial genes detected, defaulting to human pattern (^MT-)\n")
-        }
-      } else {
-        mito_string <- "^MT-"
-        cat("No gene names available, defaulting to human pattern (^MT-)\n")
-      }
-    } else {
-      mito_string <- "^MT-"
-    }
-  }
+_inner_calculate_qc_metrics <- function(spe, species = "auto") {
   
   # Look for gene symbols
   gene_symbol_columns <- c(
@@ -170,8 +85,8 @@ _inner_calculate_qc_metrics <- function(spe, mito_string = NULL, species = "auto
   
   gene_names <- NULL
   gene_col_used <- NULL
-  
-  # First try rownames
+
+  # 1. Determine the gene syombol column
   if (!is.null(rownames(spe)) && length(rownames(spe)) > 0 && 
       any(grepl("^MT-|^Mt-", rownames(spe)))) {
     gene_names <- rownames(spe)
@@ -193,7 +108,41 @@ _inner_calculate_qc_metrics <- function(spe, mito_string = NULL, species = "auto
     }
   }
   
-  # Calculate mitochondrial genes
+  
+  # 2. Determine species for Mitochondria detection
+  if (species == "human") {
+    mito_string <- "^MT-"
+  } else if (species == "mouse") {
+    mito_string <- "^Mt-"
+  } else if (species == "auto") {
+    # Auto-detect based on gene names in rownames
+    if (!is.null(gene_names) && length(gene_names) > 0) {
+      has_human_mito <- any(grepl("^MT-", gene_names))
+      has_mouse_mito <- any(grepl("^Mt-", gene_names))
+      
+      if (has_human_mito && !has_mouse_mito) {
+        mito_string <- "^MT-"
+        cat("Auto-detected human mitochondrial genes (^MT-)\n")
+      } else if (has_mouse_mito && !has_human_mito) {
+        mito_string <- "^Mt-"
+        cat("Auto-detected mouse mitochondrial genes (^Mt-)\n")
+      } else if (has_human_mito && has_mouse_mito) {
+        mito_string <- "^MT-"
+        cat("Both human and mouse patterns found, defaulting to human (^MT-)\n")
+      } else {
+        mito_string <- "^MT-"
+        cat("No mitochondrial genes detected, defaulting to human pattern (^MT-)\n")
+      }
+    } else {
+      mito_string <- "^MT-"
+      cat("No gene names available, defaulting to human pattern (^MT-)\n")
+    }
+  } else {
+    mito_string <- "^MT-"
+  }
+  
+  
+  # 3. Calculate mitochondrial genes
   if (!is.null(gene_names) && length(gene_names) > 0) {
     is_mito <- grepl(mito_string, gene_names)
     cat(sprintf("Found %d mitochondrial genes using pattern '%s'\n", sum(is_mito), mito_string))
@@ -227,9 +176,7 @@ _inner_calculate_qc_metrics <- function(spe, mito_string = NULL, species = "auto
 }
 
 # Inner function for local-outliers
-_inner_local_outliers <- function(spe, run_all_metrics = TRUE, 
-                                 metric = "sum", direction = "lower", 
-                                 log_transform = TRUE) {
+_inner_local_outliers <- function(spe) {
   
   if (run_all_metrics) {
     # Run all 3 metrics
@@ -251,45 +198,23 @@ _inner_local_outliers <- function(spe, run_all_metrics = TRUE,
     )
     
     # 3. Mitochondrial percent
-    mito_col <- if("subsets_mito_percent" %in% colnames(colData(spe))) {
-      "subsets_mito_percent"
-    } else if("subsets_Mito_percent" %in% colnames(colData(spe))) {
-      "subsets_Mito_percent"
-    } else {
-      NULL
-    }
-    
-    if (!is.null(mito_col)) {
-      spe <- localOutliers(
-        spe = spe,
-        metric = mito_col,
-        direction = "higher",
-        log = FALSE
-      )
-    } else {
-      warning("No mitochondrial percent column found. Skipping mito outlier detection.")
-    }
+    spe <- localOutliers(spe,
+      metric = "subsets_Mito_percent",
+      direction = "higher",
+      log = FALSE
+    )
     
     # Combine all outliers
-    if (!is.null(mito_col)) {
-      colData(spe)$local_outliers <- as.logical(colData(spe)$log_sum_lower_outliers) |
-        as.logical(colData(spe)$log_detected_lower_outliers) |
-        as.logical(colData(spe)[[paste0(mito_col, "_higher_outliers")]])
-      
-      outlier_columns <- c("log_sum_lower_outliers", "log_detected_lower_outliers", 
-                          paste0(mito_col, "_higher_outliers"))
-    } else {
-      colData(spe)$local_outliers <- as.logical(colData(spe)$log_sum_lower_outliers) |
-        as.logical(colData(spe)$log_detected_lower_outliers)
-      
-      outlier_columns <- c("log_sum_lower_outliers", "log_detected_lower_outliers")
-    }
+    spe$local_outliers <- as.logical(spe$sum_outliers) |
+      as.logical(spe$detected_outliers) |
+      as.logical(spe$subsets_Mito_percent_outliers)
+    
     
     # Get detailed results
     outlier_details <- list()
-    for (col in outlier_columns) {
+    for (col in c("sum_outliers", "detected_outliers", "subsets_Mito_percent_outliers")) {
       if (col %in% colnames(colData(spe))) {
-        outlier_details[[col]] <- sum(colData(spe)[[col]], na.rm = TRUE)
+        outlier_details[[col]] <- sum(colData(spe)[[local_outliers]], na.rm = TRUE)
       }
     }
     
@@ -308,59 +233,24 @@ _inner_local_outliers <- function(spe, run_all_metrics = TRUE,
         combined_column = "local_outliers"
       )
     ))
-    
-  } else {
-    # Single metric mode
-    spe <- localOutliers(
-      spe = spe,
-      metric = metric,
-      direction = direction,
-      log = log_transform
-    )
-    
-    # Extract outlier column name
-    outlier_col <- paste0(metric, "_", direction, "_outliers")
-    if (log_transform && metric %in% c("sum", "detected")) {
-      outlier_col <- paste0("log_", outlier_col)
-    }
-    
-    # Get outlier results
-    outlier_status <- colData(spe)[[outlier_col]]
-    n_outliers <- sum(outlier_status, na.rm = TRUE)
-    total_spots <- length(outlier_status)
-    
-    return(list(
-      spe = spe,
-      results = list(
-        n_outliers = n_outliers,
-        total_spots = total_spots,
-        outlier_percentage = round(n_outliers / total_spots * 100, 2),
-        metric_used = metric,
-        direction_used = direction,
-        log_transform = log_transform,
-        outlier_column = outlier_col
-      )
-    ))
   }
 }
 
 # Inner function for find-artifacts
-_inner_find_artifacts <- function(spe, mito_percent = "subsets_mito_percent",
-                                 mito_sum = "subsets_mito_sum", 
-                                 n_order = 5, name = "artifacts") {
+_inner_find_artifacts <- function(spe, n_order = 5) {
   
   # Find artifacts
   spe <- findArtifacts(
     spe = spe,
-    mito_percent = mito_percent,
-    mito_sum = mito_sum,
+    mito_percent = "subsets_mito_percent",
+    mito_sum = "subsets_mito_sum",
     n_order = n_order,
-    name = name
+    name = "artifact"
   )
   
   # Get artifact results
-  artifact_status <- colData(spe)[[name]]
-  n_artifacts <- sum(!artifact_status, na.rm = TRUE)  # FALSE indicates artifact
+  artifact_status <- colData(spe)[["artifact"]]
+  n_artifacts <- sum(artifact_status, na.rm = TRUE)  # TRUE indicates artifact
   total_spots <- length(artifact_status)
   
   return(list(
@@ -369,13 +259,18 @@ _inner_find_artifacts <- function(spe, mito_percent = "subsets_mito_percent",
       n_artifacts = n_artifacts,
       total_spots = total_spots,
       artifact_percentage = round(n_artifacts / total_spots * 100, 2),
-      mito_percent_col = mito_percent,
-      mito_sum_col = mito_sum,
+      mito_percent_col = "subsets_mito_percent",
+      mito_sum_col = "subsets_mito_sum",
       n_order = n_order,
-      artifact_column = name
+      artifact_column = "artifact"
     )
   ))
 }
+
+
+#######################################################
+### Set Functions #####################################
+#######################################################
 
 # Create application
 app <- Application$new()
@@ -398,124 +293,6 @@ app$add_get(
   }
 )
 
-#######################################################
-### Functions #########################################
-#######################################################
-
-# Local outliers endpoint
-app$add_post(
-  path = "/api/local-outliers",
-  FUN = function(request, response) {
-    log_request(request)
-    tryCatch({
-      body <- parse_request_body(request)
-      
-      # Validate required parameters
-      if (is.null(body$data_path)) {
-        error_response(response, "data_path is required", 400)
-        return()
-      }
-      
-      # Load data - expecting SpatialExperiment object
-      if (endsWith(body$data_path, ".rds")) {
-        spe <- readRDS(body$data_path)
-      } else {
-        error_response(response, "Unsupported file format. Please use .rds file with SpatialExperiment object", 400)
-        return()
-      }
-      
-      # Validate it's a SpatialExperiment object
-      if (!is(spe, "SpatialExperiment")) {
-        error_response(response, "Data must be a SpatialExperiment object", 400)
-        return()
-      }
-      
-      # Get parameters with defaults
-      run_all_metrics <- if(is.null(body$run_all_metrics)) TRUE else body$run_all_metrics
-      metric <- if(is.null(body$metric)) "sum" else body$metric
-      direction <- if(is.null(body$direction)) "lower" else body$direction
-      log_transform <- if(is.null(body$log)) TRUE else body$log
-      
-      # Call inner function
-      result <- _inner_local_outliers(
-        spe = spe,
-        run_all_metrics = run_all_metrics,
-        metric = metric,
-        direction = direction,
-        log_transform = log_transform
-      )
-      
-      # Update spe
-      spe <- result$spe
-      
-      # Save results if output path provided
-      if (!is.null(body$output_path)) {
-        saveRDS(spe, body$output_path)
-      }
-      
-      # Return results
-      success_response(response, c(result$results, list(output_saved = body$output_path)))
-      
-    }, error = function(e) {
-      error_response(response, e$message)
-    })
-  }
-)
-
-# Find artifacts endpoint
-app$add_post(
-  path = "/api/find-artifacts",
-  FUN = function(request, response) {
-    log_request(request)
-    tryCatch({
-      body <- parse_request_body(request)
-      
-      # Validate required parameters
-      if (is.null(body$data_path)) {
-        error_response(response, "data_path is required", 400)
-        return()
-      }
-      
-      # Load data - expecting SpatialExperiment object
-      spe <- readRDS(body$data_path)
-      
-      # Validate it's a SpatialExperiment object
-      if (!is(spe, "SpatialExperiment")) {
-        error_response(response, "Data must be a SpatialExperiment object", 400)
-        return()
-      }
-      
-      # Get parameters with defaults
-      mito_percent <- if(is.null(body$mito_percent)) "subsets_mito_percent" else body$mito_percent
-      mito_sum <- if(is.null(body$mito_sum)) "subsets_mito_sum" else body$mito_sum
-      n_order <- if(is.null(body$n_order)) 5 else body$n_order
-      name <- if(is.null(body$name)) "artifacts" else body$name
-      
-      # Call inner function
-      result <- _inner_find_artifacts(
-        spe = spe,
-        mito_percent = mito_percent,
-        mito_sum = mito_sum,
-        n_order = n_order,
-        name = name
-      )
-      
-      # Update spe
-      spe <- result$spe
-      
-      # Save if requested
-      if (!is.null(body$output_path)) {
-        saveRDS(spe, body$output_path)
-      }
-      
-      # Return results
-      success_response(response, c(result$results, list(output_saved = body$output_path)))
-      
-    }, error = function(e) {
-      error_response(response, e$message)
-    })
-  }
-)
 
 # Calculate QC metrics endpoint
 app$add_post(
@@ -541,13 +318,11 @@ app$add_post(
       }
       
       # Get parameters
-      mito_string <- body$mito_string
       species <- if(is.null(body$species)) "auto" else body$species
       
       # Call inner function
       result <- _inner_calculate_qc_metrics(
         spe = spe,
-        mito_string = mito_string,
         species = species
       )
       
@@ -587,6 +362,7 @@ app$add_post(
         return()
       }
       
+      
       # Create output directory
       dir.create(body$output_dir, recursive = TRUE, showWarnings = FALSE)
       
@@ -599,123 +375,21 @@ app$add_post(
         return()
       }
       
-      # Detect and set gene symbols as rownames
-      spe <- detect_and_set_gene_symbols(spe)
+      # Get parameters
+      species <- if(is.null(body$species)) "auto" else body$species
       
-      # Step 1: Calculate QC metrics if not already present
-      if (!"sum" %in% colnames(colData(spe))) {
-        mito_string <- body$mito_string
-        species <- if(is.null(body$species)) "auto" else body$species
-        
-        # Determine mito pattern if not provided
-        if (is.null(mito_string)) {
-          if (species == "human") {
-            mito_string <- "^MT-"
-          } else if (species == "mouse") {
-            mito_string <- "^Mt-"
-          } else if (species == "auto") {
-            # Auto-detect based on gene names in rownames
-            gene_names <- rownames(spe)
-            if (!is.null(gene_names) && length(gene_names) > 0) {
-              has_human_mito <- any(grepl("^MT-", gene_names))
-              has_mouse_mito <- any(grepl("^Mt-", gene_names))
-              
-              if (has_human_mito && !has_mouse_mito) {
-                mito_string <- "^MT-"
-              } else if (has_mouse_mito && !has_human_mito) {
-                mito_string <- "^Mt-"
-              } else {
-                # Default to human
-                mito_string <- "^MT-"
-              }
-            } else {
-              # Default to human if no rownames
-              mito_string <- "^MT-"
-            }
-          } else {
-            # Default to human
-            mito_string <- "^MT-"
-          }
-        }
-        
-        # Look for gene symbols directly in rowData columns
-        gene_symbol_columns <- c(
-          "symbol", "Symbol", "SYMBOL",
-          "gene_name", "gene_symbol", "gene.name", "Gene.name",
-          "feature_name", "feature", "gene",
-          "hgnc_symbol", "mgi_symbol"
-        )
-        
-        gene_names <- NULL
-        
-        # First try rownames
-        if (!is.null(rownames(spe)) && length(rownames(spe)) > 0 && 
-            any(grepl("^MT-|^Mt-", rownames(spe)))) {
-          gene_names <- rownames(spe)
-        } else if (!is.null(rowData(spe)) && ncol(rowData(spe)) > 0) {
-          # Search for gene symbol column
-          available_cols <- colnames(rowData(spe))
-          for (col in gene_symbol_columns) {
-            if (col %in% available_cols) {
-              candidate_genes <- rowData(spe)[[col]]
-              if (!is.null(candidate_genes) && !all(is.na(candidate_genes)) &&
-                  any(grepl("^MT-|^Mt-", candidate_genes))) {
-                gene_names <- candidate_genes
-                cat(sprintf("Using gene symbols from column '%s' for mitochondrial detection\n", col))
-                break
-              }
-            }
-          }
-        }
-        
-        if (!is.null(gene_names) && length(gene_names) > 0) {
-          is_mito <- grepl(mito_string, gene_names)
-          cat(sprintf("Found %d mitochondrial genes using pattern '%s'\n", sum(is_mito), mito_string))
-        } else {
-          warning("No gene names available for mitochondrial detection")
-          is_mito <- rep(FALSE, nrow(spe))
-        }
-        spe <- scuttle::addPerCellQCMetrics(spe, subsets = list(mito = is_mito))
-      }
-      
+      # Step 1: Calculate QC metrics
+      res_qc <- _inner_calculate_qc_metrics(spe = spe, species = species)
+      spe <- res_qc$spe
+  
       # Step 2: Run local outlier detection for multiple metrics
-      metrics <- if(is.null(body$metrics)) c("sum", "detected") else body$metrics
-      directions <- if(is.null(body$directions)) list(sum = "lower", detected = "lower") else body$directions
-      log_transform <- if(is.null(body$log_transform)) TRUE else body$log_transform
-      
-      outlier_columns <- character()
-      total_outliers <- 0
-      
-      for (metric in metrics) {
-        direction <- if(is.null(directions[[metric]])) "lower" else directions[[metric]]
-        spe <- localOutliers(
-          spe = spe,
-          metric = metric,
-          direction = direction,
-          log = log_transform
-        )
-        
-        # Track outlier columns
-        col_name <- paste0(metric, "_", direction, "_outliers")
-        if (log_transform && metric %in% c("sum", "detected")) {
-          col_name <- paste0("log_", col_name)
-        }
-        outlier_columns <- c(outlier_columns, col_name)
-        total_outliers <- total_outliers + sum(colData(spe)[[col_name]], na.rm = TRUE)
-      }
-      
+      res_local_outliers <- _inner_local_outliers(spe = spe)
+      spe <- res_local_outliers$spe
+
       # Step 3: Find artifacts if requested
-      detect_artifacts <- if(is.null(body$detect_artifacts)) TRUE else body$detect_artifacts
-      if (detect_artifacts) {
-        spe <- findArtifacts(
-          spe = spe,
-          mito_percent = "subsets_mito_percent",
-          mito_sum = "subsets_mito_sum",
-          n_order = if(is.null(body$n_order)) 5 else body$n_order,
-          name = "artifacts"
-        )
-      }
-      
+      res_find_artifacts <- _inner_find_artifacts(spe = spe)
+      spe <- res_find_artifacts$spe
+
       # Save results
       saveRDS(spe, file.path(body$output_dir, "qc_results.rds"))
       
@@ -727,24 +401,29 @@ app$add_post(
           mean_genes = mean(colData(spe)$detected),
           mean_mito_percent = mean(colData(spe)$subsets_mito_percent)
         ),
-        outliers = list(
-          total = total_outliers,
-          columns = outlier_columns
+        local_outliers = list(
+          n_local_outliers =colData(spe)$n_outliers,
+          outlier_percentage = colData(spe)$outlier_percentage,
         ),
-        artifacts = if("artifacts" %in% colnames(colData(spe))) 
-          sum(!colData(spe)$artifacts, na.rm = TRUE) else 0
+        artifacts = list(
+          n_artifacts = colData(spe)$n_artifacts,
+          artifact_percentage = colData(spe)$artifact_percentage,
+        )
       )
-      
+   
       saveRDS(qc_summary, file.path(body$output_dir, "qc_summary.rds"))
-      
+
+      f_spe <- spe[,(colData(spe)$local_outliers + colData(spe)$artifact) == 0]   
+      saveRDS(f_spe, file.path(body$output_dir, "clean_data.rds"))
+
       # Return summary
       success_response(response, list(
         total_spots = qc_summary$total_spots,
-        total_outliers = qc_summary$outliers$total,
-        n_artifacts = qc_summary$artifacts,
-        outlier_columns = qc_summary$outliers$columns,
+        
+        tot_filtered_spot = qc_summary$local_outliers$n_local_outliers + qc_summary$artifacts$n_artifacts
+
         output_directory = body$output_dir,
-        files_created = c("qc_results.rds", "qc_summary.rds")
+        files_created = c("qc_results.rds", "qc_summary.rds", "clean_data.rds")
       ))
       
     }, error = function(e) {
