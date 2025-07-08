@@ -1,0 +1,18 @@
+[project]
+name = "spotsweeper-mcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=2.10.2",
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.10.1",
+    "numpy>=2.3.1",
+    "pandas>=2.3.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "test",
+]
