@@ -73,7 +73,7 @@ success_response <- function(response, data) {
 #######################################################
 
 # Inner function for calculate-qc-metrics
-_inner_calculate_qc_metrics <- function(spe, species = "auto") {
+.inner_calculate_qc_metrics <- function(spe, species = "auto") {
   
   # Look for gene symbols
   gene_symbol_columns <- c(
@@ -176,10 +176,9 @@ _inner_calculate_qc_metrics <- function(spe, species = "auto") {
 }
 
 # Inner function for local-outliers
-_inner_local_outliers <- function(spe) {
+.inner_local_outliers <- function(spe) {
   
-  if (run_all_metrics) {
-    # Run all 3 metrics
+  # Run all 3 metrics
     
     # 1. Library size (sum)
     spe <- localOutliers(
@@ -199,7 +198,7 @@ _inner_local_outliers <- function(spe) {
     
     # 3. Mitochondrial percent
     spe <- localOutliers(spe,
-      metric = "subsets_Mito_percent",
+      metric = "subsets_mito_percent",
       direction = "higher",
       log = FALSE
     )
@@ -207,14 +206,15 @@ _inner_local_outliers <- function(spe) {
     # Combine all outliers
     spe$local_outliers <- as.logical(spe$sum_outliers) |
       as.logical(spe$detected_outliers) |
-      as.logical(spe$subsets_Mito_percent_outliers)
+      as.logical(spe$subsets_mito_percent_outliers)
     
     
     # Get detailed results
     outlier_details <- list()
-    for (col in c("sum_outliers", "detected_outliers", "subsets_Mito_percent_outliers")) {
+    outlier_columns <- c("sum_outliers", "detected_outliers", "subsets_mito_percent_outliers")
+    for (col in outlier_columns) {
       if (col %in% colnames(colData(spe))) {
-        outlier_details[[col]] <- sum(colData(spe)[[local_outliers]], na.rm = TRUE)
+        outlier_details[[col]] <- sum(colData(spe)[[col]], na.rm = TRUE)
       }
     }
     
@@ -233,11 +233,10 @@ _inner_local_outliers <- function(spe) {
         combined_column = "local_outliers"
       )
     ))
-  }
 }
 
 # Inner function for find-artifacts
-_inner_find_artifacts <- function(spe, n_order = 5) {
+.inner_find_artifacts <- function(spe, n_order = 5) {
   
   # Find artifacts
   spe <- findArtifacts(
@@ -321,7 +320,7 @@ app$add_post(
       species <- if(is.null(body$species)) "auto" else body$species
       
       # Call inner function
-      result <- _inner_calculate_qc_metrics(
+      result <- .inner_calculate_qc_metrics(
         spe = spe,
         species = species
       )
@@ -379,15 +378,15 @@ app$add_post(
       species <- if(is.null(body$species)) "auto" else body$species
       
       # Step 1: Calculate QC metrics
-      res_qc <- _inner_calculate_qc_metrics(spe = spe, species = species)
+      res_qc <- .inner_calculate_qc_metrics(spe = spe, species = species)
       spe <- res_qc$spe
   
       # Step 2: Run local outlier detection for multiple metrics
-      res_local_outliers <- _inner_local_outliers(spe = spe)
+      res_local_outliers <- .inner_local_outliers(spe = spe)
       spe <- res_local_outliers$spe
 
       # Step 3: Find artifacts if requested
-      res_find_artifacts <- _inner_find_artifacts(spe = spe)
+      res_find_artifacts <- .inner_find_artifacts(spe = spe)
       spe <- res_find_artifacts$spe
 
       # Save results
@@ -402,12 +401,12 @@ app$add_post(
           mean_mito_percent = mean(colData(spe)$subsets_mito_percent)
         ),
         local_outliers = list(
-          n_local_outliers =colData(spe)$n_outliers,
-          outlier_percentage = colData(spe)$outlier_percentage,
+          n_local_outliers = res_local_outliers$results$n_outliers,
+          outlier_percentage = res_local_outliers$results$outlier_percentage
         ),
         artifacts = list(
-          n_artifacts = colData(spe)$n_artifacts,
-          artifact_percentage = colData(spe)$artifact_percentage,
+          n_artifacts = res_find_artifacts$results$n_artifacts,
+          artifact_percentage = res_find_artifacts$results$artifact_percentage
         )
       )
    
@@ -420,8 +419,7 @@ app$add_post(
       success_response(response, list(
         total_spots = qc_summary$total_spots,
         
-        tot_filtered_spot = qc_summary$local_outliers$n_local_outliers + qc_summary$artifacts$n_artifacts
-
+        tot_filtered_spot = qc_summary$local_outliers$n_local_outliers + qc_summary$artifacts$n_artifacts,
         output_directory = body$output_dir,
         files_created = c("qc_results.rds", "qc_summary.rds", "clean_data.rds")
       ))

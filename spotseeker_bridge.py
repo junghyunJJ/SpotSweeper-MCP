@@ -4,7 +4,7 @@ SpotSeeker MCP Bridge - A clean, extensible bridge for SpotSweeper R package
 
 import asyncio
 import httpx
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 import os
 from pathlib import Path
 
@@ -103,122 +103,35 @@ async def r_status() -> Dict[str, Any]:
         }
 
 
-@server.tool()
-async def r_local_outliers(
-    data_path: str,
-    metric: Optional[str] = None,
-    direction: Optional[str] = None,
-    log: Optional[bool] = None,
-    run_all_metrics: bool = True,
-    output_path: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Detect local outliers in spatial transcriptomics data using SpotSweeper
-    
-    Args:
-        data_path: Path to SpatialExperiment object saved as RDS file
-        metric: QC metric to analyze ('sum' for UMI count, 'detected' for gene count, or column name)
-                Only used when run_all_metrics=False
-        direction: Direction to check for outliers ('lower' or 'higher')
-                   Only used when run_all_metrics=False
-        log: Whether to log-transform the metric (recommended for sum and detected)
-             Only used when run_all_metrics=False
-        run_all_metrics: If True, runs all 3 standard metrics (sum, detected, mito%) and combines results
-        output_path: Optional path to save the updated SpatialExperiment object
-    
-    Returns:
-        Dictionary containing outlier detection results and statistics
-        If run_all_metrics=True, includes details for each metric and combined results
-    """
-    payload = {
-        "data_path": str(Path(data_path).absolute()),
-        "run_all_metrics": run_all_metrics
-    }
-    
-    if not run_all_metrics:
-        # Use defaults for single metric mode if not specified
-        payload["metric"] = metric if metric is not None else "sum"
-        payload["direction"] = direction if direction is not None else "lower"
-        payload["log"] = log if log is not None else True
-    
-    if output_path:
-        payload["output_path"] = str(Path(output_path).absolute())
-    
-    return await call_r_api("/api/local-outliers", payload)
 
 
-@server.tool()
-async def r_find_artifacts(
-    data_path: str,
-    mito_percent: str = "subsets_mito_percent",
-    mito_sum: str = "subsets_mito_sum",
-    n_order: int = 5,
-    name: str = "artifacts",
-    output_path: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Find technical artifacts in spatial transcriptomics data using mitochondrial metrics
-    
-    Args:
-        data_path: Path to SpatialExperiment object saved as RDS file
-        mito_percent: Column name for mitochondrial percentage in colData
-        mito_sum: Column name for mitochondrial sum in colData
-        n_order: Size of neighborhood to consider (default: 5)
-        name: Name for the output column in colData (default: 'artifacts')
-        output_path: Optional path to save the updated SpatialExperiment object
-    
-    Returns:
-        Dictionary containing artifact detection results
-    """
-    payload = {
-        "data_path": str(Path(data_path).absolute()),
-        "mito_percent": mito_percent,
-        "mito_sum": mito_sum,
-        "n_order": n_order,
-        "name": name
-    }
-    
-    if output_path:
-        payload["output_path"] = str(Path(output_path).absolute())
-    
-    return await call_r_api("/api/find-artifacts", payload)
 
 
 @server.tool()
 async def r_calculate_qc_metrics(
     data_path: str,
-    mito_string: Optional[str] = None,
     species: str = "auto",
-    run_outliers: bool = True,
     output_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Calculate quality control metrics for spatial transcriptomics data using scuttle
-    and optionally detect local outliers
     
     Args:
         data_path: Path to SpatialExperiment object saved as RDS file
-        mito_string: Regex pattern to identify mitochondrial genes. If None, auto-detect based on species
         species: Species type - "human" (^MT-), "mouse" (^Mt-), or "auto" (auto-detect)
-        run_outliers: If True (default), also runs local outlier detection for sum, detected, and mito%
-                      and creates a combined "local_outliers" column
         output_path: Optional path to save the updated SpatialExperiment object
     
     Returns:
         Dictionary containing:
         - QC metric summary statistics (mean/median UMI, genes, mito%)
         - Mito pattern used for detection
-        - If run_outliers=True: outlier detection results including total outliers,
-          details per metric, and the combined "local_outliers" column
+        - Total number of spots
+        - QC columns added to colData
     """
     payload = {
         "data_path": str(Path(data_path).absolute()),
-        "species": species,
-        "run_outliers": run_outliers
+        "species": species
     }
-    
-    if mito_string is not None:
-        payload["mito_string"] = mito_string
     
     if output_path:
         payload["output_path"] = str(Path(output_path).absolute())
@@ -230,48 +143,34 @@ async def r_calculate_qc_metrics(
 async def r_run_qc_pipeline(
     data_path: str,
     output_dir: str,
-    metrics: List[str] = ["sum", "detected"],
-    directions: Optional[Dict[str, str]] = None,
-    log_transform: bool = True,
-    detect_artifacts: bool = True,
-    n_order: int = 5,
-    mito_string: Optional[str] = None,
     species: str = "auto"
 ) -> Dict[str, Any]:
     """
     Run complete SpotSweeper quality control pipeline on spatial transcriptomics data
     
+    This pipeline:
+    1. Calculates QC metrics (sum, detected, subsets_mito_percent)
+    2. Detects local outliers using all 3 metrics combined with logical OR
+    3. Finds technical artifacts based on mitochondrial metrics
+    4. Saves filtered clean data excluding outliers and artifacts
+    
     Args:
         data_path: Path to SpatialExperiment object saved as RDS file
         output_dir: Directory to save all QC results
-        metrics: List of metrics for outlier detection (default: ['sum', 'detected'])
-        directions: Dictionary mapping metrics to directions (default: {'sum': 'lower', 'detected': 'lower'})
-        log_transform: Whether to log-transform metrics (default: True)
-        detect_artifacts: Whether to detect technical artifacts (default: True)
-        n_order: Neighborhood size for artifact detection (default: 5)
-        mito_string: Regex pattern for mitochondrial genes. If None, auto-detect based on species
         species: Species type - "human" (^MT-), "mouse" (^Mt-), or "auto" (auto-detect)
     
     Returns:
-        Dictionary containing comprehensive QC results
+        Dictionary containing:
+        - total_spots: Total number of spots in the dataset
+        - tot_filtered_spot: Total number of spots filtered (outliers + artifacts)
+        - output_directory: Path to output directory
+        - files_created: List of files created (qc_results.rds, qc_summary.rds, clean_data.rds)
     """
-    # Set default directions if not provided
-    if directions is None:
-        directions = {"sum": "lower", "detected": "lower"}
-    
     payload = {
         "data_path": str(Path(data_path).absolute()),
         "output_dir": str(Path(output_dir).absolute()),
-        "metrics": metrics,
-        "directions": directions,
-        "log_transform": log_transform,
-        "detect_artifacts": detect_artifacts,
-        "n_order": n_order,
         "species": species
     }
-    
-    if mito_string is not None:
-        payload["mito_string"] = mito_string
     
     return await call_r_api("/api/run-qc-pipeline", payload)
 
