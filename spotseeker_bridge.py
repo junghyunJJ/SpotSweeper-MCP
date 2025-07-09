@@ -162,9 +162,11 @@ async def r_run_qc_pipeline(
     Returns:
         Dictionary containing:
         - total_spots: Total number of spots in the dataset
+        - filtered_local_outliers: Number of local outliers detected
+        - filtered_artifacts: Number of artifacts detected
         - tot_filtered_spot: Total number of spots filtered (outliers + artifacts)
         - output_directory: Path to output directory
-        - files_created: List of files created (qc_results.rds, qc_summary.rds, clean_data.rds)
+        - files_created: List of files created (qc_results.rds, qc_summary.rds, qc_results.h5ad if conversion successful)
     """
     payload = {
         "data_path": str(Path(data_path).absolute()),
