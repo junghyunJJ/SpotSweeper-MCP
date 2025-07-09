@@ -1,0 +1,56 @@
+# Docker image optimized for MCP server deployment
+FROM python:3.11-slim
+
+# Install R and system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    r-base-core \
+    r-base-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libxml2-dev \
+    libsodium-dev \
+    curl \
+    gcc \
+    g++ \
+    make \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/share/doc/* \
+    && rm -rf /usr/share/man/*
+
+# Install R packages step by step
+RUN R -e "install.packages('jsonlite', repos='https://cloud.r-project.org/')"
+RUN R -e "install.packages('Rserve', repos='https://cloud.r-project.org/')"
+RUN R -e "install.packages('RestRserve', repos='https://cloud.r-project.org/')"
+
+# Verify installation
+RUN R -e "library(jsonlite); library(RestRserve); cat('R packages installed successfully\n')"
+
+# Install Python dependencies
+COPY requirements.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+
+# Create app directory
+WORKDIR /app
+
+# Copy application files
+COPY r_api.R r_bridge.py ./
+COPY entrypoint.sh ./
+
+# Make entrypoint executable
+RUN chmod +x entrypoint.sh
+
+# Create non-root user
+RUN useradd -m -u 1000 mcp && chown -R mcp:mcp /app
+USER mcp
+
+# MCP servers communicate via stdio, not network ports
+# No EXPOSE needed
+
+# Set environment variables
+ENV R_API_URL=http://localhost:8081
+ENV R_API_PORT=8081
+ENV MCP_STDIO=true
+
+# Use shell form to ensure proper signal handling
+ENTRYPOINT ["/app/entrypoint.sh"]
