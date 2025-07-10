@@ -1,0 +1,105 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# R
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+.Ruserdata
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Docker
+*.log
+docker-compose.override.yml
+.dockerignore.local
+
+# Test data and temporary files
+test/
+tests/
+*.test
+*.tmp
+*.temp
+/data/*
+!/data/README.md
+/tmp/
+old/
+
+# Local configuration
+config.local.json
+settings.local.json
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Debug files
+*.debug
+debug-*
+Dockerfile.debug
+Dockerfile.ubuntu
+Dockerfile.python
+Dockerfile.alternative
+Dockerfile.simple
+
+# GitHub Actions local test
+.github/workflows/*-only.yml
+.github/workflows/*-simple.yml
+
+# MCP specific
+mcp-debug/
+.mcp-cache/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# macOS specific
+.AppleDouble
+.LSOverride
+Icon
+Network Trash Folder
+Temporary Items
+.apdisk
