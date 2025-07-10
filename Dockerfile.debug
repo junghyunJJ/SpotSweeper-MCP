@@ -1,0 +1,71 @@
+# Debug Docker image for SpotSeeker MCP server
+# Stops before SpotSweeper installation for manual debugging
+FROM rocker/r-ver:4.4.0
+
+# Install Python 3.11 and vim for debugging
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    python3.11-venv \
+    vim \
+    && ln -s /usr/bin/python3.11 /usr/bin/python \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install additional system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libxml2-dev \
+    libsodium-dev \
+    libgit2-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libfreetype6-dev \
+    libpng-dev \
+    libtiff5-dev \
+    libjpeg-dev \
+    libfontconfig1-dev \
+    libudunits2-dev \
+    libgdal-dev \
+    libgeos-dev \
+    libproj-dev \
+    libglpk-dev \
+    libmagick++-dev \
+    cmake \
+    curl \
+    gcc \
+    g++ \
+    make \
+    git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/share/doc/* \
+    && rm -rf /usr/share/man/*
+
+# Install BiocManager for Bioconductor packages
+RUN R -e "install.packages('BiocManager', repos='https://cloud.r-project.org/')"
+
+# Install R dependencies in steps for better caching
+# Install remotes and Matrix first
+RUN R -e "install.packages(c('remotes', 'Matrix'), repos='https://cloud.r-project.org/')"
+
+# Basic packages
+RUN R -e "install.packages(c('jsonlite', 'RestRserve'), repos='https://cloud.r-project.org/')"
+RUN R -e "install.packages(c('ggplot2', 'cowplot'), repos='https://cloud.r-project.org/')"
+RUN R -e "install.packages('reticulate', repos='https://cloud.r-project.org/')"
+
+# Bioconductor packages - install dependencies first
+RUN R -e "BiocManager::install(c('BiocGenerics', 'S4Vectors', 'IRanges'), ask=FALSE, update=FALSE)"
+RUN R -e "BiocManager::install(c('GenomeInfoDb', 'GenomicRanges', 'MatrixGenerics'), ask=FALSE, update=FALSE)"
+RUN R -e "BiocManager::install(c('DelayedArray', 'SummarizedExperiment'), ask=FALSE, update=FALSE)"
+RUN R -e "BiocManager::install(c('SingleCellExperiment', 'SpatialExperiment'), ask=FALSE, update=FALSE)"
+RUN R -e "BiocManager::install('scuttle', ask=FALSE, update=FALSE)"
+
+# Stop here for debugging - SpotSweeper installation will be done manually
+# Create app directory
+WORKDIR /app
+
+# Keep container running
+CMD ["/bin/bash"]

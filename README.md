@@ -17,6 +17,18 @@ This MCP server provides access to the SpotSweeper R package functionality throu
 
 ## Installation
 
+### Option 1: Using Docker (Recommended)
+
+```bash
+# Pull from Docker Hub
+docker pull YOUR_DOCKERHUB_USERNAME/spotseeker-mcp:latest
+
+# Or use docker-compose
+docker-compose up -d
+```
+
+### Option 2: Local Installation
+
 1. Clone this repository:
 ```bash
 git clone <repository-url>
@@ -34,8 +46,18 @@ pip install -r requirements.txt
 
 ### Starting the Server
 
+#### Using Docker:
 ```bash
-python spotseeker_server.py
+docker-compose up
+```
+
+#### Using Local Installation:
+```bash
+# First start the R API server
+Rscript spotseeker_api.R
+
+# In another terminal, start the MCP bridge
+python spotseeker_bridge.py
 ```
 
 ### Available Tools
@@ -141,14 +163,43 @@ This MCP server can be used with:
 
 ### Claude Desktop Configuration
 
-Add to your Claude Desktop configuration:
+#### Using Docker (Recommended):
+
+```json
+{
+  "mcpServers": {
+    "spotseeker": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "${PWD}:${PWD}:ro",
+        "-v",
+        "/tmp/spotseeker-output:/output:rw",
+        "-w",
+        "${PWD}",
+        "YOUR_DOCKERHUB_USERNAME/spotseeker-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+This configuration:
+- Automatically mounts your current directory for file access
+- Creates a writable output directory at `/tmp/spotseeker-output`
+- No need to manually specify data paths
+
+#### Using Local Installation:
 
 ```json
 {
   "mcpServers": {
     "spotseeker": {
       "command": "python",
-      "args": ["/path/to/spotseeker_server.py"]
+      "args": ["/path/to/spotseeker_bridge.py"]
     }
   }
 }

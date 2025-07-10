@@ -1,0 +1,47 @@
+#!/bin/bash
+# Wrapper script for SpotSeeker MCP Docker execution
+# This script automatically handles volume mounting and path mapping
+
+# Default settings
+DOCKER_IMAGE="${SPOTSEEKER_IMAGE:-spotseeker-mcp:latest}"
+OUTPUT_DIR="${SPOTSEEKER_OUTPUT:-${HOME}/.spotseeker/output}"
+MOUNT_MODE="${SPOTSEEKER_MOUNT_MODE:-pwd}"  # pwd, home, or custom
+
+# Create output directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
+
+# Determine what to mount based on mode
+case "$MOUNT_MODE" in
+    "home")
+        # Mount entire home directory (read-only)
+        MOUNT_ARGS="-v ${HOME}:${HOME}:ro"
+        WORK_DIR="${PWD}"
+        ;;
+    "custom")
+        # Mount custom directory specified by SPOTSEEKER_WORKSPACE
+        if [ -z "$SPOTSEEKER_WORKSPACE" ]; then
+            echo "Error: SPOTSEEKER_WORKSPACE not set for custom mount mode"
+            exit 1
+        fi
+        MOUNT_ARGS="-v ${SPOTSEEKER_WORKSPACE}:${SPOTSEEKER_WORKSPACE}:ro"
+        WORK_DIR="${PWD}"
+        ;;
+    *)
+        # Default: mount current working directory
+        MOUNT_ARGS="-v ${PWD}:${PWD}:ro"
+        WORK_DIR="${PWD}"
+        ;;
+esac
+
+# Run Docker container with appropriate mounts
+exec docker run \
+    -i \
+    --rm \
+    $MOUNT_ARGS \
+    -v "${OUTPUT_DIR}:/output:rw" \
+    -w "$WORK_DIR" \
+    -e "HOST_PWD=${PWD}" \
+    -e "HOST_HOME=${HOME}" \
+    -e "SPOTSEEKER_OUTPUT_DIR=/output" \
+    "$DOCKER_IMAGE" \
+    "$@"
