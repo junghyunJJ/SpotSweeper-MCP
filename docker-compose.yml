@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  spotseeker-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: spotseeker-mcp:latest
+    container_name: spotseeker-mcp
+    stdin_open: true
+    tty: true
+    volumes:
+      # Dynamic mounting options:
+      
+      # Option 1: Mount current directory (for development/testing)
+      - .:/workspace:ro
+      - /tmp/spotseeker-output:/output:rw
+      
+      # Option 2: Mount specific data directory
+      # - ./data:/data:rw
+      
+      # Option 3: Mount user's home directory (broader access)
+      # - ${HOME}:${HOME}:ro
+      # - /tmp/spotseeker-output:/output:rw
+    environment:
+      - R_API_URL=http://localhost:8081
+      - R_API_PORT=8081
+      - MCP_STDIO=true
+      # Add any additional environment variables here
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+  # Test configuration with local data
+  spotseeker-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: spotseeker-mcp:test
+    container_name: spotseeker-test
+    stdin_open: true
+    tty: true
+    volumes:
+      # Mount test data directory
+      - ./test/data:/data:ro
+      - /tmp/spotseeker-test-output:/output:rw
+    environment:
+      - R_API_URL=http://localhost:8081
+      - R_API_PORT=8081
+      - MCP_STDIO=true
+    command: >
+      bash -c "echo 'Test container ready. R API should be available at http://localhost:8081/health' && 
+               tail -f /dev/null"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

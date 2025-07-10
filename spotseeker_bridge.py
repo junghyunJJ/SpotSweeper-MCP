@@ -81,6 +81,27 @@ async def call_r_api(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+# Path mapping helpers for Docker environments
+def map_output_path(path: str) -> str:
+    """
+    Map output paths to ensure they're written to writable directory in Docker
+    
+    If running in Docker and path doesn't start with /output/, prepend it
+    """
+    if os.getenv("SPOTSEEKER_OUTPUT_DIR") and path and not path.startswith("/output/"):
+        # Extract filename from path
+        filename = os.path.basename(path)
+        return os.path.join("/output", filename)
+    return path
+
+
+def ensure_absolute_path(path: str) -> str:
+    """Ensure path is absolute"""
+    if path and not os.path.isabs(path):
+        return str(Path(path).absolute())
+    return path
+
+
 # MCP Tools
 
 @server.tool()
@@ -129,12 +150,12 @@ async def r_calculate_qc_metrics(
         - QC columns added to colData
     """
     payload = {
-        "data_path": str(Path(data_path).absolute()),
+        "data_path": ensure_absolute_path(data_path),
         "species": species
     }
     
     if output_path:
-        payload["output_path"] = str(Path(output_path).absolute())
+        payload["output_path"] = ensure_absolute_path(map_output_path(output_path))
     
     return await call_r_api("/api/calculate-qc-metrics", payload)
 
@@ -169,8 +190,8 @@ async def r_run_qc_pipeline(
         - files_created: List of files created (qc_results.rds, qc_summary.rds, qc_results.h5ad if conversion successful)
     """
     payload = {
-        "data_path": str(Path(data_path).absolute()),
-        "output_dir": str(Path(output_dir).absolute()),
+        "data_path": ensure_absolute_path(data_path),
+        "output_dir": ensure_absolute_path(map_output_path(output_dir)),
         "species": species
     }
     
@@ -192,6 +213,9 @@ def main():
     print(f"Starting SpotSeeker MCP Bridge Server...")
     print(f"Connecting to R API at: {R_API_BASE_URL}")
     print(f"Make sure the R API server is running: Rscript spotseeker_api.R")
+    
+    if os.getenv("SPOTSEEKER_OUTPUT_DIR"):
+        print(f"Note: Output files will be saved to: {os.getenv('SPOTSEEKER_OUTPUT_DIR')}")
     
     server.run()
 
